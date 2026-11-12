@@ -75,6 +75,27 @@ Seed2305生成480篇、六种模拟议题来源、35词/5停用词，7篇故意�
 
 前端npm ci沿用已测配套依赖锁，只改根包名；本地开发后端安装requirements并配置PG/Redis，运行uvicorn src.main:app --reload；前端npm ci && npm run dev，使用Nginx或/api开发代理。
 
+## 离线归档只读对账
+
+`scripts/reconcile_archive.py` 提供只读批量对账入口，按原语料与词典快照复算，核对同一运行的三处结果是否对得上：库内 `runs` 结果、共享 `artifacts/<run_id>.json`、以及已批准报告（`reports` 记录 + `artifacts/<report_id>.csv` 的人工命名版本）。复算直接复用 `src.services.statistics.analyze`，与 worker 同口径，不重新实现算法。
+
+```sh
+# 离线归档目录（datasets/lexicons/studies/runs/reviews/reports + artifacts/）
+python -m scripts.reconcile_archive --archive /data/archive-2026-11
+# 在线 SQLite（immutable=1 只读打开，绝不写库）
+python -m scripts.reconcile_archive --sqlite /tmp/interview-topics.sqlite --artifacts /artifacts
+# 机器可读结果写到归档之外
+python -m scripts.reconcile_archive --archive /data/archive --json /tmp/recon.json
+```
+
+- 只读：不调用任何写接口，SQLite 以 `immutable=1`、PostgreSQL 导出以只读事务打开；归档文件全部只读打开，原始数据保留不动。`scripts/export_archive.py` 把在线库与共享产物导出到全新空目录，源端仅 `SELECT`、产物按字节复制。
+- 不可信归档：`scripts/run_isolated.py` 配合 `python -I` 运行，依赖路径经 `RECON_DEPS` 显式注入，归档目录不参与模块搜索，植入的 `json.py`/`numpy.py` 不会被执行。
+- 核对范围：有效/隔离文档数、词汇表与 df/idf、稀疏 TF–IDF、主题 H 权重与展示占比、文档 W 权重、余弦近邻、NMF 元数据、checksum，以及报告里的人工命名版本与全部数值/文本单元格；人工复核另查主题编号集合、名称唯一性与 1—40 字长度。
+- 区分两类问题：结构/类型/文本不符、文件缺失或坏 JSON/CSV、checksum 不符、数值被整体改写（超出漂移带，默认相对 1%/绝对 1e-8）记为**数据损坏 corruption**；同为有限数值、差异超对账容差（默认 rtol 1e-9/atol 1e-12）但仍在漂移带内记为**数值误差 numeric**，可用 `--rtol/--atol/--drift-rel/--drift-atol` 调整，`--strict` 把容差收紧到 0 要求逐位重放。
+- 容错与收尾：遇到缺失或坏文件只记录差异并继续查完其余运行；缺少语料/词典/方案快照、无法复算的旧归档单列为**无法核验 unverifiable**，不与损坏混报。差异都带可定位对象路径（如 `runs/run-x/result.nmf.w[0][1]`、`artifacts/rpt-x.csv#section3#row2.raw_w_weight`）。
+- 退出码：`0` 全部一致；`1` 存在损坏或容差外数值误差（失败状态结束）；`2` 仅存在无法核验的旧归档；`3` 用法/环境错误。
+- 测试夹具：`scripts/make_reconcile_fixture.py` 在独立空目录生成正常、结构篡改、数值漂移、坏 JSON、文件缺失、缺依据旧归档、报告命名被替换与孤儿文件八类场景。
+
 ## 边界
 
 受控词典会遗漏未登记措辞，近邻与NMF只提供描述线索，不能证明语义分类、因果或群体结论。不同词典/样本改变TF–IDF与误差，不宜直接横比。NMF因子顺序/尺度不唯一，固定seed只保证本实现复现。Redis出队后强杀无自动重投，需要重提；JSON载荷无多人乐观锁或迁移回滚。默认账号仅本地演示。

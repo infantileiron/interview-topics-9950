@@ -11,10 +11,9 @@ def create(data):
  run,review=repo.get('runs',data.run_id),repo.get('reviews',data.review_id)
  if review['status']!='approved' or review['run_id']!=run['id'] or run['status']!='completed':raise ValueError('报告必须引用该运行已批准的人工命名复核')
  report=repo.put('reports',Report(new_id('rpt'),data.run_id,data.review_id,data.title,now()));ARTIFACT_DIR.mkdir(parents=True,exist_ok=True);(ARTIFACT_DIR/(report['id']+'.csv')).write_text(download(report['id']),encoding='utf-8');return report
-def download(id):
- report=repo.get('reports',id);run=repo.get('runs',report['run_id']);r=run['result'];review=repo.get('reviews',report['review_id'])
- if review['status']!='approved':raise HTTPException(403,'复核未通过')
- out=io.StringIO();w=csv.writer(out);m=r['nmf']
+def build_download(report,run,review):
+ """根据报告记录、运行结果与已批准复核在内存中重建CSV文本（纯函数，不读库不落盘）。"""
+ r=run['result'];out=io.StringIO();w=csv.writer(out);m=r['nmf']
  w.writerow(['report','documents','included','isolated','features','iterations','converged','frobenius_error','seed','lexicon_version','checksum']);w.writerow([safe_cell(report['title']),r['document_count'],r['included'],len(r['isolated']),r['feature_count'],m['iterations'],m['converged'],m['error'],m['seed'],safe_cell(r['lexicon_snapshot']['version']),r['checksum']])
  w.writerow([]);w.writerow(['topic_id','human_name','term','raw_h_weight','display_fraction'])
  for t in r['topics']:
@@ -28,3 +27,7 @@ def download(id):
  w.writerow([]);w.writerow(['isolated_doc','reason'])
  for d in r['isolated']:w.writerow([safe_cell(d['doc_id']),d['reason']])
  return '\ufeff'+out.getvalue()
+def download(id):
+ report=repo.get('reports',id);run=repo.get('runs',report['run_id']);review=repo.get('reviews',report['review_id'])
+ if review['status']!='approved':raise HTTPException(403,'\u590d\u6838\u672a\u901a\u8fc7')
+ return build_download(report,run,review)
