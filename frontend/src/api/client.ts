@@ -1,0 +1,4 @@
+export async function request<T=any>(path:string,method='GET',body?:unknown):Promise<T>{
+const token=sessionStorage.getItem('topic-token');const res=await fetch('/api'+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:body===undefined?undefined:JSON.stringify(body)});
+if(!res.ok){let detail='服务暂时不可用，请稍后重试';try{const data=await res.json();detail=typeof data.detail==='string'?data.detail:JSON.stringify(data.detail)}catch{}throw new Error(detail)}return res.json();}
+export async function download(path:string,name:string){const res=await fetch('/api'+path,{headers:{Authorization:'Bearer '+sessionStorage.getItem('topic-token')}});if(!res.ok)throw new Error('下载失败，请检查报告复核状态');const url=URL.createObjectURL(await res.blob());const a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url)}

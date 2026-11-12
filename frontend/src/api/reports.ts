@@ -1,0 +1,1 @@
+import {request} from './client';import type {Report} from '../types/entities';export const list=()=>request<Report[]>('/reports');export const create=(data:unknown)=>request<Report>('/reports','POST',data);

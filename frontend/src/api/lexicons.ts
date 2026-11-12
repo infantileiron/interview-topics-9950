@@ -1,0 +1,1 @@
+import {request} from './client';import type {Lexicon} from '../types/entities';export const list=()=>request<Lexicon[]>('/lexicons');export const create=(data:unknown)=>request<Lexicon>('/lexicons','POST',data);
